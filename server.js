@@ -23,6 +23,13 @@ const ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/1/O/0
 
 // ── Express (health check) ──────────────────────────────────────────────
 const app = express();
+app.use((_req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  if (_req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 app.get('/', (_req, res) => {
   res.json({ status: 'ok', rooms: rooms.size, uptime: process.uptime() });
 });
