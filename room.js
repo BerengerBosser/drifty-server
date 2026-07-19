@@ -290,6 +290,27 @@ class Room {
     }
   }
 
+  // JSON state update (client sends JSON, not binary)
+  onPlayerStateJSON(playerId, msg) {
+    const p = this.players.get(playerId);
+    if (!p) return;
+    if (msg.x !== undefined) p.state.x = msg.x;
+    if (msg.y !== undefined) p.state.y = msg.y;
+    if (msg.angle !== undefined) p.state.angle = msg.angle;
+    if (msg.drift !== undefined) p.state.drift = msg.drift;
+    if (msg.boost !== undefined) p.state.boost = msg.boost;
+    if (msg.airborne !== undefined) p.state.airborne = msg.airborne;
+    if (msg.finished !== undefined) p.state.finished = msg.finished;
+    if (msg.out !== undefined) p.state.out = msg.out;
+    if (msg.dash !== undefined) p.state.dash = msg.dash;
+    if (msg.charge !== undefined) p.state.charge = msg.charge;
+    if (msg.chargeLevel !== undefined) p.state.chargeLevel = msg.chargeLevel;
+    if (msg.lap !== undefined) p.state.lap = msg.lap;
+    if (msg.prog !== undefined) p.state.prog = msg.prog;
+    if (msg.vx !== undefined) p.state.vx = msg.vx;
+    if (msg.vy !== undefined) p.state.vy = msg.vy;
+  }
+
   // ── Game events ─────────────────────────────────────────────────────
   onSoccerHit(playerId) {
     if (this._mode && this._mode.onHit) {

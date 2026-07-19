@@ -287,6 +287,16 @@ function handleJSON(ws, msg) {
       room.onGsReady(wsToPlayerId.get(ws));
       break;
     }
+
+    // JSON state updates (client sends JSON, not binary)
+    case 'state': {
+      const room = wsToRoom.get(ws);
+      if (!room) return;
+      const playerId = wsToPlayerId.get(ws);
+      if (!playerId) return;
+      room.onPlayerStateJSON(playerId, msg);
+      break;
+    }
   }
 }
 
