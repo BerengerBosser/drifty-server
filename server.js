@@ -170,7 +170,8 @@ function handleJSON(ws, msg) {
       break;
     }
 
-    case 'settings': {
+    case 'settings':
+    case 'roomSettings': {
       const room = wsToRoom.get(ws);
       if (!room) return;
       const playerId = wsToPlayerId.get(ws);
@@ -202,7 +203,7 @@ function handleJSON(ws, msg) {
       const room = wsToRoom.get(ws);
       if (!room) return;
       const playerId = wsToPlayerId.get(ws);
-      broadcastJSON(room, { type: 'emote', id: playerId, emote: msg.emote }, ws);
+      broadcastJSON(room, { type: 'emote', id: playerId, emoji: msg.emoji, name: msg.name }, ws);
       break;
     }
 
