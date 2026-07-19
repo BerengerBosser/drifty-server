@@ -205,12 +205,13 @@ function encodeResetPositions(positions) {
   return buf;
 }
 
-function encodeStart(startTime, seed, settings) {
-  // START: [type:u8, startTime:u32, seed:u32, mode:u8, ...settings bytes]
+function encodeStart(startDelayMs, seed, settings) {
+  // START: [type:u8, startDelayMs:u32, seed:u32, settingsLen:u8, ...settings bytes]
+  // startDelayMs = ms from now until race starts (avoids Date.now() u32 overflow)
   const settingsBuf = Buffer.from(JSON.stringify(settings));
   const buf = Buffer.alloc(11 + settingsBuf.length);
   buf.writeUInt8(SERV.START, 0);
-  buf.writeUInt32BE(startTime >>> 0, 1);
+  buf.writeUInt32BE(Math.max(0, Math.min(startDelayMs, 0xFFFFFFFF)) >>> 0, 1);
   buf.writeUInt32BE(seed >>> 0, 5);
   buf.writeUInt8(settingsBuf.length, 9);
   settingsBuf.copy(buf, 10);

@@ -195,7 +195,7 @@ function handleJSON(ws, msg) {
       if (!room) return;
       const playerId = wsToPlayerId.get(ws);
       room.updatePlayerCosmetic(playerId, msg);
-      broadcastJSON(room, { type: 'customize', id: playerId, color: msg.color, carStyle: msg.carStyle }, ws);
+      broadcastJSON(room, { type: 'customize', id: playerId, color: msg.color, carStyle: msg.carStyle, photo: msg.photo }, ws);
       break;
     }
 
@@ -234,7 +234,8 @@ function handleJSON(ws, msg) {
     case 'removeBanana': {
       const room = wsToRoom.get(ws);
       if (!room) return;
-      broadcastJSON(room, { type: 'removeBanana', id: msg.id, idx: msg.idx }, ws);
+      const playerId = wsToPlayerId.get(ws);
+      broadcastJSON(room, { type: 'removeBanana', id: playerId, ids: msg.ids || [] }, ws);
       break;
     }
 
@@ -281,11 +282,15 @@ function handleJSON(ws, msg) {
       break;
     }
 
-    // Grand Slam
+    // Grand Slam — relay to host
     case 'gsReady': {
       const room = wsToRoom.get(ws);
       if (!room) return;
-      room.onGsReady(wsToPlayerId.get(ws));
+      const playerId = wsToPlayerId.get(ws);
+      const hostPlayer = room.players.get('host');
+      if (hostPlayer && hostPlayer.ws) {
+        sendJSON(hostPlayer.ws, { type: 'gsReady', id: playerId });
+      }
       break;
     }
 

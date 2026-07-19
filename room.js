@@ -142,6 +142,7 @@ class Room {
     if (!p) return;
     if (msg.color !== undefined) p.color = msg.color;
     if (msg.carStyle !== undefined) p.carStyle = msg.carStyle;
+    if (msg.photo !== undefined) p.photo = msg.photo;
   }
 
   // ── Bots ────────────────────────────────────────────────────────────
@@ -172,8 +173,9 @@ class Room {
   startRace(msg) {
     this.phase = 'countdown';
     this.mapSeed = msg.seed || Math.floor(Math.random() * 999999);
-    // Absolute start time: now + 2.5 seconds (accounts for network latency)
-    this.startTime = Date.now() + 2500;
+    // Start delay: 2.5 seconds from now
+    this.startDelay = 2500;
+    this.startTime = Date.now() + this.startDelay;
 
     // Initialize mode
     const mode = this.gameMode;
@@ -193,13 +195,13 @@ class Room {
       p.state = this._emptyState();
     }
 
-    // Broadcast start with absolute time
+    // Broadcast start with delay in ms (client converts to performance.now()-relative)
     const settings = {
       bananaMode: this.bananaMode, collisionsEnabled: this.collisionsEnabled,
       gpTotal: this.gpRaces, gpCurrent: 0, paintFormat: this.paintFormat,
       speedClass: this.speedClass,
     };
-    const buf = encodeStart(this.startTime, this.mapSeed, settings);
+    const buf = encodeStart(this.startDelay, this.mapSeed, settings);
     for (const [, p] of this.players) {
       if (p.ws) try { p.ws.send(buf); } catch (e) {}
     }
