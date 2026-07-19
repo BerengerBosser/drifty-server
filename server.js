@@ -57,13 +57,13 @@ function generateRoomCode() {
 }
 
 function sendJSON(ws, data) {
-  if (ws.readyState === 1) {
+  if (ws && ws.readyState === 1) {
     try { ws.send(JSON.stringify(data)); } catch (e) {}
   }
 }
 
 function sendBinary(ws, buf) {
-  if (ws.readyState === 1) {
+  if (ws && ws.readyState === 1) {
     try { ws.send(buf); } catch (e) {}
   }
 }
@@ -71,7 +71,7 @@ function sendBinary(ws, buf) {
 function broadcastJSON(room, data, excludeWs) {
   const str = JSON.stringify(data);
   for (const [pid, player] of room.players) {
-    if (player.ws !== excludeWs && player.ws.readyState === 1) {
+    if (player.ws && player.ws !== excludeWs && player.ws.readyState === 1) {
       try { player.ws.send(str); } catch (e) {}
     }
   }
@@ -79,7 +79,7 @@ function broadcastJSON(room, data, excludeWs) {
 
 function broadcastBinary(room, buf, excludeWs) {
   for (const [pid, player] of room.players) {
-    if (player.ws !== excludeWs && player.ws.readyState === 1) {
+    if (player.ws && player.ws !== excludeWs && player.ws.readyState === 1) {
       try { player.ws.send(buf); } catch (e) {}
     }
   }
