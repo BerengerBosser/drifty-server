@@ -202,8 +202,14 @@ class Room {
       speedClass: this.speedClass,
     };
     const buf = encodeStart(this.startDelay, this.mapSeed, settings);
-    for (const [, p] of this.players) {
-      if (p.ws) try { p.ws.send(buf); } catch (e) {}
+    console.log('[DRIFTY-DBG] room.startRace: sending binary START to', this.players.size, 'players, delay=' + this.startDelay + 'ms, seed=' + this.mapSeed + ' bufLen=' + buf.length);
+    for (const [pid, p] of this.players) {
+      if (p.ws) {
+        console.log('[DRIFTY-DBG]   → sending to', pid, 'wsReady=' + p.ws.readyState);
+        try { p.ws.send(buf); } catch (e) { console.log('[DRIFTY-DBG]   → ERROR sending to', pid, e.message); }
+      } else {
+        console.log('[DRIFTY-DBG]   → SKIP', pid, '(no ws, isBot=' + p.isBot + ')');
+      }
     }
 
     // Auto-start game phase after countdown

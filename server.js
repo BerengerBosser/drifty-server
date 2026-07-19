@@ -121,6 +121,7 @@ wss.on('connection', (ws) => {
 
 // ── JSON messages (lobby + events) ──────────────────────────────────────
 function handleJSON(ws, msg) {
+  if (msg.type !== 'state' && msg.type !== 'ping') console.log('[DRIFTY-DBG] Server ← JSON:', msg.type, 'from=' + (wsToPlayerId.get(ws) || '?'));
   switch (msg.type) {
     case 'createRoom': {
       if (rooms.size >= MAX_ROOMS) {
@@ -132,6 +133,7 @@ function handleJSON(ws, msg) {
       rooms.set(code, room);
       wsToRoom.set(ws, room);
       wsToPlayerId.set(ws, 'host');
+      console.log('[DRIFTY-DBG] Server: room created, code=' + code + ' hostName=' + (msg.name || 'Hôte'));
       sendJSON(ws, { type: 'roomCreated', code });
       break;
     }
@@ -155,6 +157,7 @@ function handleJSON(ws, msg) {
       room.addPlayer(playerId, ws, msg);
       wsToRoom.set(ws, room);
       wsToPlayerId.set(ws, playerId);
+      console.log('[DRIFTY-DBG] Server: player joined, code=' + code + ' playerId=' + playerId + ' name=' + msg.name + ' gameMode=' + room.gameMode);
       // Send welcome to this player
       sendJSON(ws, {
         type: 'welcome',
@@ -176,6 +179,7 @@ function handleJSON(ws, msg) {
       if (!room) return;
       const playerId = wsToPlayerId.get(ws);
       if (playerId !== 'host') return;
+      console.log('[DRIFTY-DBG] Server: settings received, gameMode=' + msg.gameMode + ' trackMode=' + msg.trackMode + ' speedClass=' + msg.speedClass);
       room.updateSettings(msg);
       broadcastJSON(room, { type: 'settings', ...room.getSettings() }, ws);
       break;
@@ -183,9 +187,10 @@ function handleJSON(ws, msg) {
 
     case 'startRace': {
       const room = wsToRoom.get(ws);
-      if (!room) return;
+      if (!room) { console.log('[DRIFTY-DBG] Server: startRace received but no room!'); return; }
       const playerId = wsToPlayerId.get(ws);
-      if (playerId !== 'host') return;
+      if (playerId !== 'host') { console.log('[DRIFTY-DBG] Server: startRace from non-host:', playerId); return; }
+      console.log('[DRIFTY-DBG] Server: startRace from host, gameMode=' + room.gameMode + ' phase=' + room.phase + ' players=' + room.players.size);
       room.startRace(msg);
       break;
     }
