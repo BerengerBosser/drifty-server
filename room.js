@@ -177,7 +177,25 @@ class Room {
     this.startDelay = 2500;
     this.startTime = Date.now() + this.startDelay;
 
-    // Initialize mode
+    // Reset player states before initializing mode
+    for (const [, p] of this.players) {
+      p.state = this._emptyState();
+    }
+
+    // Broadcast binary START before mode.init() sends mode-specific JSON (socReset etc.)
+    const settings = {
+      bananaMode: this.bananaMode, collisionsEnabled: this.collisionsEnabled,
+      gpTotal: this.gpRaces, gpCurrent: 0, paintFormat: this.paintFormat,
+      speedClass: this.speedClass,
+    };
+    const buf = encodeStart(this.startDelay, this.mapSeed, settings);
+    for (const [pid, p] of this.players) {
+      if (p.ws) {
+        try { p.ws.send(buf); } catch (e) { console.log('[DRIFTY-DBG] startRace send error to', pid, e.message); }
+      }
+    }
+
+    // Initialize mode after sending binary START (mode.init may broadcast JSON)
     const mode = this.gameMode;
     if (mode === 'paint' || mode === 'territoire') {
       this._mode = new PaintMode(this);
@@ -189,28 +207,6 @@ class Room {
       this._mode = new RaceMode(this);
     }
     this._mode.init();
-
-    // Reset player states
-    for (const [, p] of this.players) {
-      p.state = this._emptyState();
-    }
-
-    // Broadcast start with delay in ms (client converts to performance.now()-relative)
-    const settings = {
-      bananaMode: this.bananaMode, collisionsEnabled: this.collisionsEnabled,
-      gpTotal: this.gpRaces, gpCurrent: 0, paintFormat: this.paintFormat,
-      speedClass: this.speedClass,
-    };
-    const buf = encodeStart(this.startDelay, this.mapSeed, settings);
-    console.log('[DRIFTY-DBG] room.startRace: sending binary START to', this.players.size, 'players, delay=' + this.startDelay + 'ms, seed=' + this.mapSeed + ' bufLen=' + buf.length);
-    for (const [pid, p] of this.players) {
-      if (p.ws) {
-        console.log('[DRIFTY-DBG]   → sending to', pid, 'wsReady=' + p.ws.readyState);
-        try { p.ws.send(buf); } catch (e) { console.log('[DRIFTY-DBG]   → ERROR sending to', pid, e.message); }
-      } else {
-        console.log('[DRIFTY-DBG]   → SKIP', pid, '(no ws, isBot=' + p.isBot + ')');
-      }
-    }
 
     // Auto-start game phase after countdown
     setTimeout(() => {

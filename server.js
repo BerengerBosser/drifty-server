@@ -130,6 +130,8 @@ function handleJSON(ws, msg) {
       }
       const code = generateRoomCode();
       const room = new Room(code, ws, msg);
+      // Apply host customization from createRoom payload
+      if (msg.photo) room.updatePlayerCosmetic('host', msg);
       rooms.set(code, room);
       wsToRoom.set(ws, room);
       wsToPlayerId.set(ws, 'host');
