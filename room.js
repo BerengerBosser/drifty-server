@@ -10,6 +10,7 @@
 
 'use strict';
 
+const { EventEmitter } = require('events');
 const {
   MSG, SERV, FLAG,
   encodeState, encodeStatePaint, encodeStateSumo, encodeStateSoccer,
@@ -23,11 +24,19 @@ const CAR_COLORS = ['#ff4d5e', '#ff8a3d', '#ffc531', '#a8ee3a', '#25e08a', '#12d
 const MAX_PLAYERS = 4;
 const SEND_INTERVAL_MS = 33; // ~30 Hz server tick
 
-// ── Sumo arena constants (must match client) ────────────────────────────
-const SUMO_R0 = 320;
-const SUMO_RMIN = 140;
-const SUMO_CARR = 22;
-const SUMO_DASH = 650;
+// ── Reconnexion : délai de grâce avant de libérer réellement un slot après
+//    une coupure de connexion (plus long en pleine partie qu'en lobby, pour
+//    laisser le temps à un changement de réseau mobile / un onglet en veille
+//    de revenir sans perdre sa place). Voir Room.markDisconnected/reclaimPlayer.
+const RECONNECT_GRACE_LOBBY_MS = 20000;
+const RECONNECT_GRACE_GAME_MS = 45000;
+
+// ── Sumo arena constants (must match client's SumoArena: R0=600, Rmin=260,
+//    and the SUMO_CARR/SUMO_DASH constants near the top of index.html) ───
+const SUMO_R0 = 600;
+const SUMO_RMIN = 260;
+const SUMO_CARR = 20;
+const SUMO_DASH = 500;
 const SUMO_RESTITUTION = 0.7;
 
 // ── Paint grid constants (must match client) ────────────────────────────
@@ -36,10 +45,12 @@ const PAINT_STAMP_R = 30;
 const PAINT_STAMP_RD = 24;
 const PAINT_STAMP_DRIFT_R = 42;
 
-class Room {
-  constructor(code, hostWs, msg) {
+class Room extends EventEmitter {
+  constructor(code, hostWs, msg, hostToken) {
+    super();
     this.code = code;
     this.players = new Map();   // id → { ws, name, slot, color, carStyle, photo, stats, cloudId, isBot, state }
+    this.tokenToPlayer = new Map(); // sessionToken → playerId (reconnexion)
     this.hostId = 'host';
     this.gameMode = 'classic';
     this.lapsTarget = 3;
@@ -71,7 +82,11 @@ class Room {
       isBot: false,
       isLocal: true,
       state: this._emptyState(),
+      sessionToken: hostToken || null,
+      disconnectedAt: 0,
+      pendingRemovalTimer: null,
     });
+    if (hostToken) this.tokenToPlayer.set(hostToken, 'host');
 
     // Mode-specific state
     this._mode = null; // will be set on race start
@@ -79,7 +94,7 @@ class Room {
   }
 
   // ── Player management ───────────────────────────────────────────────
-  addPlayer(id, ws, msg) {
+  addPlayer(id, ws, msg, token) {
     const usedSlots = new Set([...this.players.values()].map(p => p.slot));
     let slot = 0;
     while (usedSlots.has(slot)) slot++;
@@ -89,13 +104,58 @@ class Room {
       photo: msg.photo || null, stats: msg.stats || null,
       cloudId: msg.cloudId || null, isBot: false, isLocal: false,
       state: this._emptyState(),
+      sessionToken: token || null,
+      disconnectedAt: 0,
+      pendingRemovalTimer: null,
     });
+    if (token) this.tokenToPlayer.set(token, id);
     this.emptySince = 0;
   }
 
   removePlayer(id) {
+    const p = this.players.get(id);
+    if (p && p.pendingRemovalTimer) clearTimeout(p.pendingRemovalTimer);
+    if (p && p.sessionToken) this.tokenToPlayer.delete(p.sessionToken);
     this.players.delete(id);
     if (this.players.size === 0) this.emptySince = Date.now();
+  }
+
+  // Connexion perdue : ne libère PAS le slot immédiatement — on laisse un
+  // délai de grâce pendant lequel le joueur peut se reconnecter via
+  // reclaimPlayer(token, newWs) et reprendre exactement sa place (roster,
+  // état de jeu). Si le délai expire sans reconnexion, _finalizeRemoval fait
+  // le ménage et émet 'playerRemoved' pour que server.js prévienne le reste
+  // de la room (roster à jour, hostLeft si c'était l'hôte).
+  markDisconnected(id) {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.ws = null;
+    p.disconnectedAt = Date.now();
+    if (p.pendingRemovalTimer) clearTimeout(p.pendingRemovalTimer);
+    const graceMs = this.phase === 'lobby' ? RECONNECT_GRACE_LOBBY_MS : RECONNECT_GRACE_GAME_MS;
+    p.pendingRemovalTimer = setTimeout(() => this._finalizeRemoval(id), graceMs);
+  }
+
+  _finalizeRemoval(id) {
+    const p = this.players.get(id);
+    if (!p || p.ws) return; // reconnecté entre-temps
+    p.pendingRemovalTimer = null;
+    this.removePlayer(id);
+    this.emit('playerRemoved', id);
+  }
+
+  // Reconnexion : retrouve le joueur par son token de session, réattache le
+  // nouveau ws et annule la libération programmée. Retourne le playerId
+  // reconstitué (ou null si le token est inconnu / a expiré).
+  reclaimPlayer(token, newWs) {
+    const id = this.tokenToPlayer.get(token);
+    if (!id) return null;
+    const p = this.players.get(id);
+    if (!p) return null;
+    if (p.pendingRemovalTimer) { clearTimeout(p.pendingRemovalTimer); p.pendingRemovalTimer = null; }
+    p.ws = newWs;
+    p.disconnectedAt = 0;
+    return id;
   }
 
   getPlayerSlot(id) {
@@ -113,7 +173,8 @@ class Room {
     const r = [];
     for (const [id, p] of this.players) {
       r.push({ id, name: p.name, slot: p.slot, color: p.color, carStyle: p.carStyle,
-               isBot: p.isBot, photo: p.photo, stats: p.stats });
+               isBot: p.isBot, photo: p.photo, stats: p.stats,
+               disconnected: !p.isBot && !p.ws });
     }
     return r;
   }
@@ -202,7 +263,16 @@ class Room {
     } else if (mode === 'sumo') {
       this._mode = new SumoMode(this);
     } else if (mode === 'foot' || mode === 'soccer') {
-      this._mode = new SoccerMode(this);
+      // NOTE: SoccerMode (balle/buts) reste désactivée : son protocole (un
+      // seul match, pas de pads) est incompatible avec celui du client
+      // (soccerMatches multiples, pads, socSnap ~20 Hz). Tant qu'elle n'est
+      // pas réécrite pour matcher le client, le foot reste hôte-autoritaire
+      // (comme en P2P) — le serveur se contente de relayer socStart/socSnap
+      // via le passthrough générique de server.js. Instancier SoccerMode ici
+      // ferait tourner une 2ème simulation de balle/buts en parallèle, qui
+      // enverrait ses propres socReset/socGoal/socEnd en conflit avec ceux
+      // (implicites, via socSnap) de l'hôte.
+      this._mode = new RaceMode(this);
     } else {
       this._mode = new RaceMode(this);
     }
