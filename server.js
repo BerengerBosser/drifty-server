@@ -52,7 +52,7 @@ const wsToPlayerId = new WeakMap(); // ws → playerId
 
 function generateRoomCode() {
   let code = '';
-  for (let i = 0; i < 6; i++) code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)];
+  for (let i = 0; i < 4; i++) code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)];
   return rooms.has(code) ? generateRoomCode() : code;
 }
 
